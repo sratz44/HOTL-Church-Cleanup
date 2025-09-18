@@ -1,0 +1,210 @@
+
+import pandas as pd
+import os
+
+# --- Step 1: Define the file paths ---
+path1 = r'C:\Users\sratz\OneDrive - SNHU\Documents\HoTlProject\textinchurch.csv'
+path2 = r'C:\Users\sratz\OneDrive - SNHU\Documents\HoTlProject\planningcenter.csv'
+
+# --- Step 2: Load the two CSV files ---
+try:
+    df1 = pd.read_csv(path1)
+    df2 = pd.read_csv(path2)
+    print("Files loaded successfully!")
+except FileNotFoundError:
+    print("Error: One or both files were not found.")
+    print("Please make sure the file paths are correct.")
+    print(f"Path 1: {path1}")
+    print(f"Path 2: {path2}")
+    raise
+
+# --- Step 3: Rename the email column in the planning center dataframe ---
+# We are renaming 'Home Email' to 'Email' to allow for a successful merge.
+df2.rename(columns={'Home Email': 'Email'}, inplace=True)
+print("Planning Center 'Home Email' column renamed to 'Email'.")
+
+# --- Step 4: Merge the two dataframes ---
+merged_df = pd.merge(df1, df2, on='Email', how='left', suffixes=('_textinchurch', '_planningcenter'))
+print("Dataframes merged successfully!")
+
+# --- Step 5: Save the final merged file ---
+output_path = 'combined_for_review.csv'
+merged_df.to_csv(output_path, index=False)
+print(f"The combined file has been saved as '{output_path}'")
+
+# --- Step 6: Display the first 5 rows of the merged data for a quick review ---
+print("\nFirst 5 rows of the merged data:")
+print(merged_df.head())
+
+# Load the merged file into a DataFrame
+df = pd.read_csv('combined_for_review.csv')
+
+print("File loaded successfully!")
+
+df.info()
+
+print(df.columns)
+
+# Create a list of columns that have at least one non-null value
+non_empty_columns = df.columns[df.notna().any()]
+
+# Create a new dataframe with only the columns that are not completely empty
+cleaned_df = df[non_empty_columns]
+
+# Print the shape of the new dataframe to see how many columns were removed
+print(f"Original shape: {df.shape}")
+print(f"Cleaned shape: {cleaned_df.shape}")
+
+# Now you can inspect the new, smaller dataframe
+cleaned_df.info()
+
+# The dataframe you will be working with
+df = cleaned_df.copy()
+
+# --- Consolidate 'First Name' ---
+# Create a new 'First Name' column. It will be a copy of the _textinchurch column.
+df['First Name'] = df['First Name_textinchurch']
+
+# Fill in any missing values in the new 'First Name' column with values from the _planningcenter column.
+df['First Name'].fillna(df['First Name_planningcenter'], inplace=True)
+
+# --- Consolidate 'Last Name' ---
+# Repeat the same process for Last Name.
+df['Last Name'] = df['Last Name_textinchurch']
+df['Last Name'].fillna(df['Last Name_planningcenter'], inplace=True)
+
+# --- Consolidate 'Birthdate' ---
+# Repeat the same process for Birthdate.
+df['Birthdate'] = df['Birthdate_textinchurch']
+df['Birthdate'].fillna(df['Birthdate_planningcenter'], inplace=True)
+
+# --- Remove the original, now-redundant columns ---
+df.drop(columns=[
+    'First Name_textinchurch',
+    'First Name_planningcenter',
+    'Last Name_textinchurch',
+    'Last Name_planningcenter',
+    'Birthdate_textinchurch',
+    'Birthdate_planningcenter'
+], inplace=True)
+
+# Print the list of all remaining columns to confirm the changes
+print("\nRemaining columns after consolidation:")
+print(df.columns.tolist())
+
+df = df.copy()
+
+# --- Consolidate all email columns into a single 'Email' column ---
+# We prioritize the main 'Email' column from the textinchurch data,
+# then fill in any missing values with 'Work Email', then 'Other Email'.
+df['Email'] = df['Email'].fillna(df['Work Email']).fillna(df['Other Email'])
+
+# --- Consolidate all phone columns into a single 'Phone' column ---
+# We prioritize the main 'Phone' column, then fill in any missing values
+# with 'Mobile Phone Number', then 'Home Phone Number'.
+df['Phone'] = df['Phone'].fillna(df['Mobile Phone Number']).fillna(df['Home Phone Number'])
+
+# --- Remove all the original, now-redundant email and phone columns ---
+df.drop(columns=[
+    'Work Email',
+    'Other Email',
+    'Mobile Phone Number',
+    'Home Phone Number'
+], inplace=True)
+
+# Print the list of all remaining columns to confirm the changes
+print("\nRemaining columns after email and phone consolidation:")
+print(df.columns.tolist())
+
+
+
+# --- Consolidate address into a single 'Address' column---
+# Create a new 'Address' column.
+# This will not be automatically done. You will have to create it and populate it manually.
+# For example, to create a new address column and set the first few rows with example data.
+df['Address'] = df['Home Address Street Line 1'] + ', ' + df['Home Address City'] + ', ' + df['Home Address State'] + ', ' + df['Home Address Zip Code']
+
+# To keep just one address, you can choose which one to keep, in this case we'll drop the other columns since we consolidated them.
+df.drop(columns=[
+    'Home Address Street Line 1',
+    'Home Address Street Line 2',
+    'Home Address City',
+    'Home Address State',
+    'Home Address Zip Code',
+    'Home Address Country Code',
+    'Home Address Country'
+], inplace=True)
+
+# Print the list of all remaining columns to confirm the changes
+print("\nRemaining columns after address consolidation:")
+print(df.columns.tolist())
+
+# --- Step 1: Remove columns you don't need ---
+# This list contains the core fields required for the Gloo and Tithely upload,
+# as well as any other columns you've decided to keep.
+columns_to_keep = [
+    'First Name',
+    'Last Name',
+    'Email',
+    'Phone',
+    'Address',
+    'Birthdate',
+    'Gender'
+    # You can add more columns here if needed
+]
+
+# Keep only the columns in your defined list
+final_df = df[columns_to_keep]
+
+# --- Step 2: Remove duplicate rows ---
+# We use the 'Phone' column to identify and remove duplicates since we know
+# it has the most complete data. We keep the first instance found.
+final_df.drop_duplicates(subset=['Phone'], keep='first', inplace=True)
+
+# --- Step 3: Save the final file ---
+# Save the final, clean dataframe to a new CSV file
+final_df.to_csv('final_cleaned_data.csv', index=False)
+
+# Print the final shape and a few rows to confirm everything looks good
+print(f"Final shape after cleanup: {final_df.shape}")
+print("Final file 'final_cleaned_data.csv' has been saved!")
+print("\nFirst 10 rows of the final cleaned dataframe:")
+print(final_df.head(10))
+
+import pandas as pd
+
+# Load the cleaned data from Phase One
+df = pd.read_csv('final_cleaned_data.csv')
+
+# --- Step 1: Rename columns to match the Gloo template ---
+df.rename(columns={
+    'Phone': 'Phone Number',
+    'Email': 'Email (optional)',
+    'Address': 'Address (optional)'
+}, inplace=True)
+
+# --- Step 2: Add the required 'Groups (optional)' column ---
+# This column is optional, so we will add it and leave it empty for now.
+# You can fill this in manually if you have groups you want to add.
+df['Groups (optional)'] = ''
+
+# --- Step 3: Reorder the columns to match the template ---
+# The order is critical for the import to work correctly.
+gloo_columns = [
+    'Phone Number',
+    'First Name',
+    'Last Name',
+    'Email (optional)',
+    'Address (optional)',
+    'Groups (optional)'
+]
+
+# Create a new dataframe with the correct column order
+gloo_df = df[gloo_columns]
+
+# --- Step 4: Save the final Gloo-ready file ---
+gloo_df.to_csv('gloo_import_ready.csv', index=False)
+
+print("Phase 2 complete! Your Gloo-ready file is 'gloo_import_ready.csv'.")
+print("\nFirst 10 rows of the Gloo-ready dataframe:")
+print(gloo_df.head(10))
